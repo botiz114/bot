@@ -2,7 +2,7 @@ import asyncio
 import logging
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.types import (ReplyKeyboardMarkup, KeyboardButton, 
-                           InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery)
+                           InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, InputMediaPhoto, InputMediaVideo, InputMediaAnimation)
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.filters import Command
@@ -13,7 +13,7 @@ ADMIN_ID = 886103881  # Замени на свой Telegram ID
 STICKER_ID = "CAACAgIAAxkBAAEMgApnrNqFHMQqHOPwDMetOA5iK3MXeQACJi4AAguccEj5Jpxf8oKEGDYE"  # Замени на ID нужного стикера
 
 bot = Bot(token=API_TOKEN)
-dp = Dispatcher(bot=bot)
+dp = Dispatcher()
 
 # Список отзывов
 reviews = []
@@ -74,8 +74,8 @@ async def show_review(message: types.Message):
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[[InlineKeyboardButton("Следующий", callback_data=f"show_review_{next_index}")]]
     )
-    for media in media_files:
-        await message.answer_media_group(media)
+    
+    await bot.send_media_group(message.chat.id, media_files)
     await message.answer(review_text, reply_markup=keyboard)
 
 @dp.callback_query(F.data.startswith("show_review_"))
@@ -90,8 +90,8 @@ async def show_next_review(callback: CallbackQuery):
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[[InlineKeyboardButton("Следующий", callback_data=f"show_review_{next_index}")]]
     )
-    for media in media_files:
-        await callback.message.answer_media_group(media)
+    
+    await bot.send_media_group(callback.message.chat.id, media_files)
     await callback.message.answer(review_text, reply_markup=keyboard)
 
 @dp.message(Command("add_review"))
@@ -102,36 +102,39 @@ async def add_review_start(message: types.Message, state: FSMContext):
     await message.answer("Отправьте фото, видео или гифки для отзыва (до 3 медиа).")
     await state.set_state(AddReviewState.waiting_for_media)
 
-@dp.message(F.content_type.in_({types.ContentType.PHOTO, types.ContentType.VIDEO, types.ContentType.ANIMATION}), state=AddReviewState.waiting_for_media)
+@dp.message(F.content_type.in_([types.ContentType.PHOTO, types.ContentType.VIDEO, types.ContentType.ANIMATION]), AddReviewState.waiting_for_media)
 async def process_media(message: types.Message, state: FSMContext):
     data = await state.get_data()
     media_files = data.get("media_files", [])
+    
     if message.photo:
-        media_files.append(types.InputMediaPhoto(message.photo[-1].file_id))
+        media_files.append(InputMediaPhoto(media=message.photo[-1].file_id))
     elif message.video:
-        media_files.append(types.InputMediaVideo(message.video.file_id))
+        media_files.append(InputMediaVideo(media=message.video.file_id))
     elif message.animation:
-        media_files.append(types.InputMediaAnimation(message.animation.file_id))
+        media_files.append(InputMediaAnimation(media=message.animation.file_id))
+
     if len(media_files) > 3:
         await message.answer("Максимум 3 медиа! Отправьте заново.")
         return
+
     await state.update_data(media_files=media_files)
     await message.answer("Теперь отправьте текст для отзыва.")
     await state.set_state(AddReviewState.waiting_for_text)
 
-@dp.message(state=AddReviewState.waiting_for_text)
+@dp.message(AddReviewState.waiting_for_text)
 async def process_text(message: types.Message, state: FSMContext):
     data = await state.get_data()
     media_files = data.get("media_files", [])
+    
     reviews.append((media_files, message.text))
     await message.answer("✔️ Отзыв добавлен!")
     await state.clear()
 
 async def main():
     logging.basicConfig(level=logging.INFO)
-    await dp.start_polling()
+    await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    import asyncio
     asyncio.run(main())
 
