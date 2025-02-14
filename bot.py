@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import json
+import os
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.types import (ReplyKeyboardMarkup, KeyboardButton, 
                            InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, InputMediaPhoto, InputMediaVideo, InputMediaAnimation)
@@ -7,16 +9,37 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.filters import Command
 
+# Настройка логирования
+logging.basicConfig(level=logging.INFO)
+
+# Настройки бота
 API_TOKEN = "7530716464:AAEEnqZLchL5GGrNYOAocqNpi8-8loaaSbY"  # Замени на свой токен
 CHANNEL_USERNAME = "@CorteizProjects"  # Замени на username твоего канала
 ADMIN_ID = 886103881  # Замени на свой Telegram ID
 STICKER_ID = "CAACAgIAAxkBAAEMgApnrNqFHMQqHOPwDMetOA5iK3MXeQACJi4AAguccEj5Jpxf8oKEGDYE"  # Замени на ID нужного стикера
+REVIEWS_FILE = "reviews.json"
 
+# Инициализация бота
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
 # Список отзывов
 reviews = []
+
+# Загрузка отзывов из JSON
+def load_reviews():
+    global reviews
+    if os.path.exists(REVIEWS_FILE):
+        with open(REVIEWS_FILE, "r", encoding="utf-8") as f:
+            reviews = json.load(f)
+
+# Сохранение отзывов в JSON
+def save_reviews():
+    with open(REVIEWS_FILE, "w", encoding="utf-8") as f:
+        json.dump(reviews, f, ensure_ascii=False, indent=4)
+
+# Загрузка отзывов при старте
+load_reviews()
 
 # Состояния для FSM
 class AddReviewState(StatesGroup):
@@ -108,11 +131,11 @@ async def process_media(message: types.Message, state: FSMContext):
     media_files = data.get("media_files", [])
     
     if message.photo:
-        media_files.append(InputMediaPhoto(media=message.photo[-1].file_id))
+        media_files.append({"type": "photo", "file_id": message.photo[-1].file_id})
     elif message.video:
-        media_files.append(InputMediaVideo(media=message.video.file_id))
+        media_files.append({"type": "video", "file_id": message.video.file_id})
     elif message.animation:
-        media_files.append(InputMediaAnimation(media=message.animation.file_id))
+        media_files.append({"type": "animation", "file_id": message.animation.file_id})
 
     if len(media_files) > 3:
         await message.answer("Максимум 3 медиа! Отправьте заново.")
@@ -128,13 +151,18 @@ async def process_text(message: types.Message, state: FSMContext):
     media_files = data.get("media_files", [])
     
     reviews.append((media_files, message.text))
+    save_reviews()  # Сохраняем в JSON
     await message.answer("✔️ Отзыв добавлен!")
     await state.clear()
 
-async def main():
-    logging.basicConfig(level=logging.INFO)
-    await dp.start_polling(bot)
+async def run_bot():
+    while True:
+        try:
+            await dp.start_polling(bot, skip_updates=True)
+        except Exception as e:
+            logging.error(f"❌ Ошибка: {e}")
+            await asyncio.sleep(5)  # Перезапуск через 5 сек
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(run_bot())
 
