@@ -2,6 +2,8 @@ import asyncio
 import logging
 import json
 import os
+from flask import Flask
+from threading import Thread
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.types import (ReplyKeyboardMarkup, KeyboardButton, 
                            InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, InputMediaPhoto, InputMediaVideo, InputMediaAnimation)
@@ -22,6 +24,20 @@ REVIEWS_FILE = "reviews.json"
 # Инициализация бота
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
+
+# Flask сервер для UptimeRobot
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Бот работает!"
+
+def run():
+    app.run(host='0.0.0.0', port=8080)
+
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
 
 # Список отзывов
 reviews = []
@@ -151,18 +167,20 @@ async def process_text(message: types.Message, state: FSMContext):
     media_files = data.get("media_files", [])
     
     reviews.append((media_files, message.text))
-    save_reviews()  # Сохраняем в JSON
+    save_reviews()
     await message.answer("✔️ Отзыв добавлен!")
     await state.clear()
 
 async def run_bot():
+    keep_alive()
     while True:
         try:
             await dp.start_polling(bot, skip_updates=True)
         except Exception as e:
             logging.error(f"❌ Ошибка: {e}")
-            await asyncio.sleep(5)  # Перезапуск через 5 сек
+            await asyncio.sleep(5)
 
 if __name__ == "__main__":
     asyncio.run(run_bot())
+
 
